@@ -1,19 +1,20 @@
 import pygame
 import numpy as np
+import serial
+
+ser = None
+try:
+    ser = serial.Serial('/dev/ttyUSB0')
+except:
+    pass
+
+
 
 polygons = [(0, 0), (150, 100), (300, 300), (450, 100), (500, 200), (600, 0)]
 
 SCREENSIZE = 600
 
-def distance(a, b):
-    return sum([(a[i] - b[i])**2 for i in range(0, len(a))])**0.5
-
-def normal(a, b):
-    dx = a[0] - b[0]
-    dy = a[1] - b[1]
-    dz = a[2] - b[2]
-    length = distance((dx, dy, dz), (0, 0, 0))
-    return (dx/length, dy/length, dz/length)
+COUNTS_PER_INCH = 1
 
 def normalize(v):
     return v / np.linalg.norm(v)
@@ -157,6 +158,14 @@ def main():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 quit()
+
+        while ser and ser.in_waiting > 0:
+            data = ser.read(5)
+            motor_index = {'A': 0, 'B': 1, 'C': 2}
+            motor_to_update = con.motors[motor_index[data[0]]]
+            new_encoder = int(data[1:], 16)
+            motor_to_update.line = new_encoder / COUNTS_PER_INCH
+
 
         mouse_pos = pygame.mouse.get_pos()
         con.set_position(np.array((mouse_pos[0], 200, mouse_pos[1])))
