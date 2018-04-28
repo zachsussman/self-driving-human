@@ -1,8 +1,8 @@
 import pygame
 import numpy as np
 from motors.drawing import convert3d
-
-
+import string
+import math
 
 def convert_polys(polys, scale):
     return [[(point['x'], point['y']) for point in poly] for poly in polys]
@@ -48,6 +48,9 @@ def segments_for_polygon(polygon):
     ''' Returns a list of line segments making up the polygon '''
     return [(np.array(polygon[i]), np.array(polygon[i+1])) for i in range(0, len(polygon) - 1)] + [(np.array(polygon[-1]), np.array(polygon[0]))]
 
+def segments_for_outline(outline):
+    return [(np.array(outline[i]), np.array(outline[i+1])) for i in range(0, len(outline) - 1)] 
+
 ''' bounding_box_check: [(float, float)] * np.array[2] -> boolean '''
 def bounding_box_check(polygon, point):
     ''' Returns true iff point is in the bounding box of polygon '''
@@ -77,7 +80,7 @@ def find_nearest(segments, pos2d):
     return np.array((m[0], 0, m[1]))
 
 
-SERIAL_PER_TORQUE = 5
+SERIAL_PER_TORQUE = 1000
 COUNTS_PER_INCH = 372.14285714285717
 
 class Motor():
@@ -91,12 +94,14 @@ class Motor():
         return convert3d(self.pos)
 
     def serial_output(self):
-        val = min(255, max(0, int(self.torque * TORQUE_TO_SERIAL)))
+        if math.isnan(self.torque): return b'00'
+        val = min(255, max(0, int(self.torque * SERIAL_PER_TORQUE)))
         digit0 = val % 16
         digit1 = (val // 16) % 16
         # digit2 = (val // 16**2) % 16
         # digit3 = (val // 16**3) % 16
-        return ''.join([string.hexdigits[d] for d in (digit1, digit0)])
+        x = ''.join(["0123456789abcdef"[d] for d in (digit1, digit0)])
+        return x.encode('utf-8')
 
     def serial_input(self, data):
         self.line = int(data[1:], 16) / COUNTS_PER_INCH
@@ -106,25 +111,40 @@ class Controller():
     def __init__(self, motors, ser):
         self.motors = motors
         self.polygons = []
+        self.outline = []
         self.valid_kinematics = False
         self._position = None
         self.ser = ser
 
     def update_serial(self):
+        motor_index = {b'A': 0, b'B': 1, b'C': 2}
+
         if not self.ser: return
+
         while self.ser.in_waiting > 0:
-            data = self.ser.read(5)
-            motor_index = {'A': 0, 'B': 1, 'C': 2}
-            motor_to_update = self.motors[motor_index[data[0]]]
-            motor_to_update.serial_input(data[1:])
-        for i in range(0, 3):
-            self.ser.write(self.motors[i].serial_output())
-            self.ser.write("\n")
+            c = self.ser.read()
+            if c in motor_index:
+                data = self.ser.read(4)
+                motor_to_update = self.motors[motor_index[c]]
+                motor_to_update.serial_input(data)
+                # print("updated motor", c, "with data", data)
+            else:
+                # print(str(c))
+
+        # print("Motor 1:", self.motors[0].line, "  Motor 2:", self.motors[1].line, "  Motor 3:", self.motors[2].line)
+        
+        msg = self.motors[0].serial_output() + self.motors[1].serial_output() + self.motors[2].serial_output() + b't'
+        self.ser.write(msg)
+        self.ser.flush()
 
     ''' set_polygons: [(float, float)] -> void '''
     def set_polygons(self, polygons):
         ''' Sets the current polygons, invalidating the current kinematics. '''
         self.polygons = polygons
+        self.valid_kinematics = False
+
+    def set_outline(self, outline):
+        self.outline = outline
         self.valid_kinematics = False
 
     ''' set_position: np.array[3] -> void '''
@@ -196,6 +216,27 @@ class Controller():
             displacement = np.array((0, 0, 0))
         else:
             displacement = find_nearest(segments_for_polygon(polys[0]), pos2d)
+
+        if displacement[2] > 0: 
+            # If we're on the backside of a wall, we can't force out of it
+            force = np.array((0, 0, 0))
+        elif np.linalg.norm(displacement) < 0.001:
+            # Too little force
+            force = np.array((0, 0, 0))
+        else: 
+            # Convert the displacement into a force
+            # We take the square root of the magnitude of the displacement to make things smoother
+            force = displacement / np.sqrt(np.linalg.norm(displacement))
+
+        self.set_force(force * 0.5)
+
+    def move_from_outline(self):
+        pos = self.position()
+        pos2d = np.array((pos[0], pos[2]))
+        if len(self.outline) == 0:
+            displacement = np.array((0, 0, 0))
+        else:
+            displacement = find_nearest(segments_for_outline(self.outline), pos2d)
 
         if displacement[2] > 0: 
             # If we're on the backside of a wall, we can't force out of it
