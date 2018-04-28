@@ -22,4 +22,4 @@ if __name__ == "__main__":
                 print(time.time() - start_time)
                 exit(0)
         elif mode == 2:
-            print(result)
+            print(str(result) + ",")

@@ -30,6 +30,23 @@ def mult(p, s):
 def normalize(p):
     return mult(p, 1.0/mag(p))
 
+def smooth_samples(samples):
+    to_delete = []
+    for i in range(len(samples)):
+        sample = samples[i]
+        if sample['quality'] == 0 or sample['distance'] == 0:
+            to_delete.append(i)
+    to_delete.reverse()
+    for i in to_delete:
+        samples.pop(i)
+    for i in range(1, len(samples) - 1):
+        prev = samples[i-1]
+        curr = samples[i]
+        next = samples[i+1]
+        if 2 * abs(next['distance'] - prev['distance']) < abs(curr['distance'] - prev['distance']):
+            print("smoothing something " + str(abs(next['distance'] - prev['distance'])))
+            curr['distance'] = prev['distance']
+
 def segment(samples):
     result = []
     curr_segment = []
@@ -41,7 +58,8 @@ def segment(samples):
             continue
         curr = {
             "x": sample['distance'] * math.sin(sample['angle'] * math.pi / 180),
-            "y": sample['distance'] * math.cos(sample['angle'] * math.pi / 180)
+            "y": sample['distance'] * math.cos(sample['angle'] * math.pi / 180),
+            "original": True
         }
         if len(curr_segment) > 0:
             prev = curr_segment[-1]
@@ -53,6 +71,19 @@ def segment(samples):
         curr_segment.append(curr)
     result.append(curr_segment)
     return result
+
+def dont_segment(samples):
+    result = []
+    for sample in samples:
+        if sample['quality'] == 0 or sample['distance'] == 0:
+            continue
+        curr = {
+            "x": sample['distance'] * math.sin(sample['angle'] * math.pi / 180),
+            "y": sample['distance'] * math.cos(sample['angle'] * math.pi / 180),
+            "original": True
+        }
+        result.append(curr)
+    return [result]
 
 def simplify(segments):
     i = 0
@@ -70,7 +101,7 @@ def simplify(segments):
                 'x': next['y'] - prev['y'],
                 'y': -(next['x'] - prev['x'])
             })
-            if abs(dot(diff(curr, prev), normal)) < mag(diff(next, prev))/10:
+            if abs(dot(diff(curr, prev), normal)) < mag(diff(next, prev)) / 40:
                 to_remove.append(j)
         to_remove.reverse()
         for j in to_remove:
@@ -79,16 +110,18 @@ def simplify(segments):
 
 def close(segments):
     for seg in segments:
-        if len(seg) == 2:
+        dir1 = normalize(diff(seg[1], seg[0]))
+        dir2 = normalize(diff(seg[-1], seg[-2]))
+        if dot(dir1, dir2) > 0.9 or len(seg) == 2:
             # create a rectangle from this segment
             normal = normalize({
-                'x': seg[1]['y'] - seg[0]['y'],
-                'y': -(seg[1]['x'] - seg[0]['x'])
+                'x': seg[-1]['y'] - seg[0]['y'],
+                'y': -(seg[-1]['x'] - seg[0]['x'])
             })
             # ensure it points away from 0,0
             if dot(normal, seg[0]) < 0:
                 normal = mult(normal, -1)
-            seg.append(sum(seg[1], mult(normal, 500)))
+            seg.append(sum(seg[-1], mult(normal, 500)))
             seg.append(sum(seg[0], mult(normal, 500)))
         else:
             # If the "if" case below holds, we want to do this again so we end
@@ -118,7 +151,34 @@ def close(segments):
                     break
 
 def detect_polygons(samples):
-    segments = segment(samples)
+    #segments = segment(samples)
+    smooth_samples(samples)
+    segments = dont_segment(samples)
     simplify(segments)
-    close(segments)
+    #close(segments)
     return segments
+
+def ray_segment_intersect(origin, dir, p1, p2):
+    dir = normalize(dir)
+    normal = normalize({
+        'x': p1['y'] - p2['y'],
+        'y': -(p1['x'] - p2['x'])
+    })
+    denom = dot(normal, dir)
+    if denom == 0:
+        return False
+    t = dot(normal, diff(p1, origin)) / denom
+    if t < 0:
+        return False
+    intersect = sum(origin, mult(dir, t))
+    seg_dir = diff(p2, p1)
+    distance = dot(diff(intersect, p1), seg_dir)
+    return distance >= 0 and distance <= dot(seg_dir, seg_dir)
+
+def point_in_polygon(point, polygon):
+    ray = {"x": 1, "y": 0}
+    count = 0
+    for i in range(len(polygon)):
+        if ray_segment_intersect(point, ray, polygon[i], polygon[(i+1) % len(polygon)]):
+            count += 1
+    return count % 2 == 1
