@@ -1,11 +1,11 @@
 import pygame
 import numpy as np
-
+from motors.drawing import convert3d
 
 
 
 def convert_polys(polys, scale):
-    return [[(point['x'] * scale + 400, point['y'] * scale + 400) for point in poly] for poly in polys]
+    return [[(point['x'], point['y']) for point in poly] for poly in polys]
 
 ''' normalize: np.array -> np.array '''
 def normalize(v):
@@ -77,6 +77,9 @@ def find_nearest(segments, pos2d):
     return np.array((m[0], 0, m[1]))
 
 
+SERIAL_PER_TORQUE = 5
+COUNTS_PER_INCH = 372.14285714285717
+
 class Motor():
     ''' Represents a single motor. '''
     def __init__(self, position, torque = 0):
@@ -85,15 +88,38 @@ class Motor():
         self.pos = position
 
     def drawing_coords(self):
-        return (self.pos[0], self.pos[2])
+        return convert3d(self.pos)
+
+    def serial_output(self):
+        val = min(255, max(0, int(self.torque * TORQUE_TO_SERIAL)))
+        digit0 = val % 16
+        digit1 = (val // 16) % 16
+        # digit2 = (val // 16**2) % 16
+        # digit3 = (val // 16**3) % 16
+        return ''.join([string.hexdigits[d] for d in (digit1, digit0)])
+
+    def serial_input(self, data):
+        self.line = int(data[1:], 16) / COUNTS_PER_INCH
 
 class Controller():
     ''' Represents the entire kinematics controller. '''
-    def __init__(self, motors):
+    def __init__(self, motors, ser):
         self.motors = motors
         self.polygons = []
         self.valid_kinematics = False
         self._position = None
+        self.ser = ser
+
+    def update_serial(self):
+        if not self.ser: return
+        while self.ser.in_waiting > 0:
+            data = self.ser.read(5)
+            motor_index = {'A': 0, 'B': 1, 'C': 2}
+            motor_to_update = self.motors[motor_index[data[0]]]
+            motor_to_update.serial_input(data[1:])
+        for i in range(0, 3):
+            self.ser.write(self.motors[i].serial_output())
+            self.ser.write("\n")
 
     ''' set_polygons: [(float, float)] -> void '''
     def set_polygons(self, polygons):
@@ -188,9 +214,9 @@ class Controller():
     ''' draw: pygame.screen -> () '''
     def draw(self, screen):
         ''' Draws a picture of the controller, in x-z projection, on to the screen. '''
-        pos = self.position()
-        x = max(0, pos[0])
-        z = max(0, pos[2])
+        (x, z) = convert3d(self.position())
+        x = max(0, x)
+        z = max(0, z)
         pygame.draw.rect(screen, (0, 0, 0), (max(0, x-10), max(0, z-10), 20, 20), 0)
 
         pygame.draw.aaline(screen, (0, 0, 0), (x, z), (self.motors[0].drawing_coords()))
