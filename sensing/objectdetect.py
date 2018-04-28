@@ -44,7 +44,6 @@ def smooth_samples(samples):
         curr = samples[i]
         next = samples[i+1]
         if 2 * abs(next['distance'] - prev['distance']) < abs(curr['distance'] - prev['distance']):
-            print("smoothing something " + str(abs(next['distance'] - prev['distance'])))
             curr['distance'] = prev['distance']
 
 def segment(samples):

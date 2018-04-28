@@ -21,5 +21,5 @@ if __name__ == "__main__":
                 ld.stopScan()
                 print(time.time() - start_time)
                 exit(0)
-        elif mode == 2:
+        if mode == 2:
             print(str(result) + ",")

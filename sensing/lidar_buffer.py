@@ -8,7 +8,7 @@ class LidarBuffer:
         self.collecting = False
 
     def collectLoop(self):
-        idx = 0
+        hi = 0
         started = False
         while True:
             try:
@@ -22,17 +22,21 @@ class LidarBuffer:
                 else:
                     continue
             if item['first_scan']:
-                if len(self.samples) > idx:
-                    self.samples = self.samples[:idx]
-                idx = 0
+                if len(self.samples) > hi:
+                    self.samples = self.samples[:hi]
+                hi = 0
                 started = True
             if not started:
                 continue
-            if idx < len(self.samples):
-                self.samples[idx] = item
-            else:
-                self.samples.append(item)
-            idx += 1
+            idx = hi
+            while idx > 0 and self.samples[idx-1]['angle'] >= item['angle'] and self.samples[idx-1]['angle'] - item['angle'] < 20:
+                idx -= 1
+            self.samples.insert(idx, item)
+            while idx+1 < len(self.samples) and self.samples[idx+1]['angle'] <= item['angle'] and item['angle'] - self.samples[idx+1]['angle'] < 20:
+                self.samples.pop(idx+1)
+            while idx+1 < len(self.samples) and self.samples[idx+1]['angle'] > item['angle'] + 20:
+                self.samples.pop(idx+1)
+            hi += 1
 
     def start(self):
         self.q = Queue()
