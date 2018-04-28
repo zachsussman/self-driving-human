@@ -38,10 +38,15 @@ def segment_normal(l1, l2, ray=False):
     t = np.dot(normal, a-c) / np.dot(normal, d-c)
     return 0 <= t and (ray or t <= 1)
 
+# ''' segments_intersect: np.array[2] * np.array[2] -> boolean '''
+# def segments_intersect(ray, line):
+#     ''' Finds if the ray ray intersects the line segment line'''
+#     return segment_normal(ray, line) and segment_normal(line, ray, ray=True)
+
 ''' segments_intersect: np.array[2] * np.array[2] -> boolean '''
-def segments_intersect(ray, line):
-    ''' Finds if the ray ray intersects the line segment line'''
-    return segment_normal(ray, line) and segment_normal(line, ray, ray=True)
+def segments_intersect(l1, l2):
+    ''' Finds if the line segments intersects'''
+    return segment_normal(l1, l2) and segment_normal(l2, l1)
 
 ''' segments_for_polygon: [(float, float)] -> [np.array[2]] '''
 def segments_for_polygon(polygon):
@@ -76,8 +81,13 @@ def polygon_intersect(polygon, point):
 def find_nearest(segments, pos2d):
     ''' Returns a 3D vector from point to the nearest line segment in segments '''
     vectors = [vector_to_line(s[0], s[1], pos2d) for s in segments]
-    m = min(vectors, key=lambda v: np.linalg.norm(v))
-    return np.array((m[0], 0, m[1]))
+    m = vectors[0]
+    s = segments[0]
+    for i in range(1, len(vectors)):
+        if np.linalg.norm(m) > np.linalg.norm(vectors[i]):
+            m = vectors[i]
+            s = segments[i]
+    return (s, np.array((m[0], 0, m[1])))
 
 
 SERIAL_PER_TORQUE = 1000
@@ -127,13 +137,14 @@ class Controller():
                 data = self.ser.read(4)
                 motor_to_update = self.motors[motor_index[c]]
                 motor_to_update.serial_input(data)
-                # print("updated motor", c, "with data", data)
+                if c == b'C': print("updated motor", c, "with data", data)
             else:
-                # print(str(c))
+                print(str(c))
 
         # print("Motor 1:", self.motors[0].line, "  Motor 2:", self.motors[1].line, "  Motor 3:", self.motors[2].line)
         
         msg = self.motors[0].serial_output() + self.motors[1].serial_output() + self.motors[2].serial_output() + b't'
+        print(msg)
         self.ser.write(msg)
         self.ser.flush()
 
@@ -234,11 +245,13 @@ class Controller():
         pos = self.position()
         pos2d = np.array((pos[0], pos[2]))
         if len(self.outline) == 0:
-            displacement = np.array((0, 0, 0))
-        else:
-            displacement = find_nearest(segments_for_outline(self.outline), pos2d)
+            self.set_force(np.array((0, 0, 0)))
+            return
 
-        if displacement[2] > 0: 
+
+        (s, displacement) = find_nearest(segments_for_outline(self.outline), pos2d)
+
+        if not segments_intersect(s, (np.array((0, 0)), pos2d)): 
             # If we're on the backside of a wall, we can't force out of it
             force = np.array((0, 0, 0))
         elif np.linalg.norm(displacement) < 0.001:

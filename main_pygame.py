@@ -53,25 +53,23 @@ def main():
 
         con.update_serial()
 
-
-
-
         mouse_pos = unconvert(pygame.mouse.get_pos())
         con.set_position(np.array((mouse_pos[0], 200, mouse_pos[1])))
         screen.fill((255, 255, 255))
         con.set_outline(outline)
 
-        # samples = lb.samples[:]
-        # polygons = convert_polys(detect_polygons(samples), 0.05)
-        # con.set_polygons(polygons)
+        samples = lb.samples[:]
+        polygons = convert_polys(detect_polygons(samples), 0.05)
+        con.set_outline(polygons[0])
         con.move_from_outline()
 
-        # for poly in polygons:
-        #     p = [convert2d(point) for point in poly]
-        #     color = (0, 128, 0) if polygon_intersect(p, mouse_pos) else (0, 0, 128)
-        #     pygame.draw.polygon(screen, color, p)
-        pygame.draw.lines(screen, (0, 128, 0), False, [convert2d(p) for p in outline])
+        for poly in polygons:
+            p = [convert2d(point) for point in poly]
+            # color = (0, 128, 0) if polygon_intersect(p, mouse_pos) else (0, 0, 128)
+            pygame.draw.lines(screen, (0, 0, 128), False, p)
+        # pygame.draw.lines(screen, (0, 128, 0), False, [convert2d(p) for p in outline])
         con.draw(screen)
+        # print("frame")
 
         pygame.display.flip()
         pygame.time.wait(30)
