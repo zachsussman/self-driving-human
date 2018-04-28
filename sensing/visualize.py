@@ -43,7 +43,8 @@ if __name__ == "__main__":
                     x2 = 400 + next['x'] * scale
                     y2 = 400 - next['y'] * scale
                     canvas.create_line(x1, y1, x2, y2, fill="gray", width=2, tags='point')
-                    create_point(canvas, x1, y1)
+                    if ('original' in curr):
+                        create_point(canvas, x1, y1)
             tk.update_idletasks()
             tk.update()
             if not tk:
