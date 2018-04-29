@@ -1,7 +1,7 @@
 from motors.controller import Controller, Motor, convert_polys, polygon_intersect
 from motors.drawing import SCREEN_SIZE, convert2d, unconvert
 from sensing.objectdetect import detect_polygons
-from sensing.lidar_mock import Lidar
+from sensing.lidar import Lidar
 from sensing.lidar_buffer import LidarBuffer
 import numpy as np
 import pygame

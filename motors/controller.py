@@ -278,7 +278,7 @@ class Controller():
         pygame.draw.aaline(screen, (0, 0, 0), (x, z), (self.motors[2].drawing_coords()))
 
         (dx, dy, dz) = self.force()
-        pygame.draw.line(screen, (255, 0, 0), (x, z), (max(0, x + dx * 10), max(0, z + dz*10)), 5)
+        pygame.draw.line(screen, (255, 0, 0), (x, z), (max(0, x + dx * 10), max(0, z - dz*10)), 5)
 
 
 
