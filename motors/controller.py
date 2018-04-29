@@ -81,6 +81,7 @@ def polygon_intersect(polygon, point):
 def find_nearest(segments, pos2d):
     ''' Returns a 3D vector from point to the nearest line segment in segments '''
     vectors = [vector_to_line(s[0], s[1], pos2d) for s in segments]
+    if len(vectors) == 0: return None
     m = vectors[0]
     s = segments[0]
     for i in range(1, len(vectors)):
@@ -141,7 +142,7 @@ class Controller():
                 motor_to_update = self.motors[motor_index[c]]
                 motor_to_update.serial_input(data)
                 d[c] = data
-        # print(d)
+        print(d)
         
         msg = self.motors[0].serial_output() + self.motors[1].serial_output() + self.motors[2].serial_output() + b't'
         self.ser.write(msg)
@@ -188,7 +189,7 @@ class Controller():
         j = np.dot(e_y, p3 - p1)
 
         (r1, r2, r3) = (self.motors[i].line for i in (0, 1, 2))
-        print(r1, r2, r3)
+        # print(r1, r2, r3)
 
         x = (r1*r1 - r2*r2 + d*d)/(2*d)
         # print(r1, r2, d)
@@ -261,10 +262,18 @@ class Controller():
             self.set_force(accum + np.array((0, 0, 0)))
             return
 
-        (s, displacement) = find_nearest(segments_for_outline(self.outline), pos2d)
+        segs = segments_for_outline(self.outline)
 
-        if not segments_intersect(s, (np.array((0, 0)), pos2d)): 
+        tpl = find_nearest(segs, pos2d)
+        if not tpl: 
+            self.set_force(accum + np.array((0, 0, 0)))
+            return
+
+        (s, displacement) = tpl
+
+        if not any(segments_intersect(s0, (np.array((0, 0)), pos2d)) for s0 in segs): 
             # If we're on the backside of a wall, we can't force out of it
+            # print("not intersecting")
             force = np.array((0, 0, 0))
         elif np.linalg.norm(displacement) < 0.001:
             # Too little force

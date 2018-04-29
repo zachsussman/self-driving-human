@@ -1,8 +1,9 @@
 from motors.controller import Controller, Motor, convert_polys, polygon_intersect
 from motors.drawing import SCREEN_SIZE, convert2d, unconvert
 from sensing.objectdetect import detect_polygons
-from sensing.lidar_mock import Lidar
+from sensing.lidar import Lidar
 from sensing.lidar_buffer import LidarBuffer
+from lidar_to_points import lidar_to_points
 import numpy as np
 import pygame
 import serial
@@ -56,17 +57,20 @@ def main():
         # mouse_pos = unconvert(pygame.mouse.get_pos())
         # con.set_position(np.array((mouse_pos[0], 200, mouse_pos[1])))
         screen.fill((255, 255, 255))
-        con.set_outline(outline)
+        # con.set_outline(outline)
 
         samples = lb.samples[:]
-        polygons = convert_polys(detect_polygons(samples), 0.05)
-        con.set_outline(polygons[0])
+        # print(samples)
+        # end()
+        outline = lidar_to_points(samples)
+        # polygons = convert_polys(detect_polygons(samples), 0.05)
+        con.set_outline(outline)
         con.move_from_outline()
 
-        for poly in polygons:
-            p = [convert2d(point) for point in poly]
+        # for poly in polygons:
+        p = [convert2d(point) for point in outline]
             # color = (0, 128, 0) if polygon_intersect(p, mouse_pos) else (0, 0, 128)
-            pygame.draw.lines(screen, (0, 0, 128), False, p)
+        if len(p) > 1: pygame.draw.aalines(screen, (0, 0, 128), False, p)
         # pygame.draw.lines(screen, (0, 128, 0), False, [convert2d(p) for p in outline])
         con.draw(screen)
         # print("frame")
