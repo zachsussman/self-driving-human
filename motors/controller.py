@@ -123,7 +123,8 @@ class Controller():
         self.polygons = []
         self.outline = []
         self.valid_kinematics = False
-        self._position = None
+        self._position = []
+        self.position_set = False
         self.ser = ser
 
     def update_serial(self):
@@ -164,12 +165,13 @@ class Controller():
         for m in self.motors:
             m.line = np.linalg.norm(position - m.pos)
         self.valid_kinematics = False
-        self._position = None
+        self._position = []
+        self.position_set = False
         
     ''' position: () -> np.array[3] '''
     def position(self):
         ''' Returns the current position, based on the lengths of the motor lines. '''
-        if self._position != None: return self._position
+        if self.position_set: return self._position
 
         # assumes 3 motors
         # https://en.wikipedia.org/wiki/Trilateration
@@ -188,6 +190,7 @@ class Controller():
         y = (r1*r1 - r3*r3 + i*i + j*j)/(2*j) - i*x/j
         z = (r1*r1 - x*x - y*y)**0.5
 
+        self.position_set = True
         self._position = p1 + x*e_x + y*e_y + z*e_z
         return self._position
 
