@@ -1,7 +1,7 @@
 from motors.controller import Controller, Motor, convert_polys, polygon_intersect
 from motors.drawing import SCREEN_SIZE, convert2d, unconvert
 from sensing.objectdetect import detect_polygons
-from sensing.lidar import Lidar
+from sensing.lidar_mock import Lidar
 from sensing.lidar_buffer import LidarBuffer
 import numpy as np
 import pygame
@@ -19,9 +19,9 @@ except:
 
 outline = [(-3000, 0), (-2000, 1000), (-1000, 1500), (-500, 2000), (0, 1000), (1000, 3000), (2000, 2000), (2500, 200), (3000, 0)]
 
-motor1 = Motor(np.array((-3000, 0, 0)), 1)
-motor2 = Motor(np.array((3000, 0, 0)), 1)
-motor3 = Motor(np.array((-3000, 5000, 0)), 2)
+motor1 = Motor(np.array((-3000, 0, 0)), 0)
+motor2 = Motor(np.array((-3000, 5050, 0)), 0)
+motor3 = Motor(np.array((3000, 0, 0)), 0)
 con = Controller([motor1, motor2, motor3], ser)
 
 ld = Lidar("/dev/tty.SLAB_USBtoUART")
@@ -53,8 +53,8 @@ def main():
 
         con.update_serial()
 
-        mouse_pos = unconvert(pygame.mouse.get_pos())
-        con.set_position(np.array((mouse_pos[0], 200, mouse_pos[1])))
+        # mouse_pos = unconvert(pygame.mouse.get_pos())
+        # con.set_position(np.array((mouse_pos[0], 200, mouse_pos[1])))
         screen.fill((255, 255, 255))
         con.set_outline(outline)
 

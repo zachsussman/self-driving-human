@@ -91,7 +91,8 @@ def find_nearest(segments, pos2d):
 
 
 SERIAL_PER_TORQUE = 1000
-COUNTS_PER_INCH = 372.14285714285717
+# COUNTS_PER_INCH = 372.14285714285717 * 0.0393701 * 58/6000
+COUNTS_PER_MM = 6700 / 6000 
 
 class Motor():
     ''' Represents a single motor. '''
@@ -114,7 +115,7 @@ class Motor():
         return x.encode('utf-8')
 
     def serial_input(self, data):
-        self.line = int(data[1:], 16) / COUNTS_PER_INCH
+        self.line = int(data, 16) / COUNTS_PER_MM
 
 class Controller():
     ''' Represents the entire kinematics controller. '''
@@ -132,22 +133,21 @@ class Controller():
 
         if not self.ser: return
 
+        d = {}
         while self.ser.in_waiting > 0:
             c = self.ser.read()
             if c in motor_index:
                 data = self.ser.read(4)
                 motor_to_update = self.motors[motor_index[c]]
                 motor_to_update.serial_input(data)
-                if c == b'C': print("updated motor", c, "with data", data)
-            else:
-                print(str(c))
-
-        # print("Motor 1:", self.motors[0].line, "  Motor 2:", self.motors[1].line, "  Motor 3:", self.motors[2].line)
+                d[c] = data
+        # print(d)
         
         msg = self.motors[0].serial_output() + self.motors[1].serial_output() + self.motors[2].serial_output() + b't'
-        print(msg)
         self.ser.write(msg)
         self.ser.flush()
+
+        self.position_set = False
 
     ''' set_polygons: [(float, float)] -> void '''
     def set_polygons(self, polygons):
@@ -173,10 +173,13 @@ class Controller():
         ''' Returns the current position, based on the lengths of the motor lines. '''
         if self.position_set: return self._position
 
+        # print("position: ", self.motors[0].line, self.motors[1].line, self.motors[2].line)
+
         # assumes 3 motors
         # https://en.wikipedia.org/wiki/Trilateration
 
         (p1, p2, p3) = [m.pos for m in self.motors]
+        # print(p1, p2, p3)
         e_x = (p2 - p1) / (np.linalg.norm(p2 - p1))
         i = np.dot(e_x, p3 - p1)
         e_y = (p3 - p1 - i*e_x) / (np.linalg.norm(p3 - p1 - i*e_x))
@@ -185,10 +188,16 @@ class Controller():
         j = np.dot(e_y, p3 - p1)
 
         (r1, r2, r3) = (self.motors[i].line for i in (0, 1, 2))
+        print(r1, r2, r3)
 
         x = (r1*r1 - r2*r2 + d*d)/(2*d)
+        # print(r1, r2, d)
         y = (r1*r1 - r3*r3 + i*i + j*j)/(2*j) - i*x/j
-        z = (r1*r1 - x*x - y*y)**0.5
+        # print(x, r1, r3, i, j)
+        z = -(r1*r1 - x*x - y*y)**0.5
+        almost_position = p1 + x*e_x + y*e_y
+        # print(r1, almost_position[0], almost_position[1])
+
 
         self.position_set = True
         self._position = p1 + x*e_x + y*e_y + z*e_z
@@ -246,11 +255,11 @@ class Controller():
 
     def move_from_outline(self):
         pos = self.position()
+        accum = np.array((0, 0, 0)) if pos[1] > 0 else np.array((0, 1, 0))
         pos2d = np.array((pos[0], pos[2]))
         if len(self.outline) == 0:
-            self.set_force(np.array((0, 0, 0)))
+            self.set_force(accum + np.array((0, 0, 0)))
             return
-
 
         (s, displacement) = find_nearest(segments_for_outline(self.outline), pos2d)
 
@@ -265,7 +274,7 @@ class Controller():
             # We take the square root of the magnitude of the displacement to make things smoother
             force = displacement / np.sqrt(np.linalg.norm(displacement))
 
-        self.set_force(force * 0.5)
+        self.set_force(accum + force * 0.5)
 
 
     ''' draw: pygame.screen -> () '''
