@@ -1,8 +1,20 @@
 import pygame
 import numpy as np
-from motors.drawing import convert3d
+from motors.drawing import convert3d, CVT
 import string
 import math
+
+def draw_arrow(screen, color, start, finish, thickness):
+    arrow_size = thickness * 3
+    arrow_head = pygame.Surface((arrow_size, arrow_size*.866), flags=pygame.SRCALPHA)
+    arrow_head.fill((0, 0, 0, 0))
+    points = [(0, arrow_size*.866), (arrow_size/2, 0), (arrow_size, arrow_size*.866)]
+    pygame.draw.polygon(arrow_head, color, points)
+
+    dy = finish[1] - start[1]
+    dx = finish[0] - start[0]
+    pygame.draw.line(screen, color, start, finish, thickness)
+    screen.blit(pygame.transform.rotate(arrow_head, -math.atan2(dy, dx)*180/math.pi - 90), (finish[0] - arrow_size/2, finish[1] - arrow_size/2))
 
 def convert_polys(polys, scale):
     return [[(point['x'], point['y']) for point in poly] for poly in polys]
@@ -91,7 +103,7 @@ def find_nearest(segments, pos2d):
     return (s, np.array((m[0], 0, m[1])))
 
 
-SERIAL_PER_TORQUE = 1000
+SERIAL_PER_TORQUE = 40
 # COUNTS_PER_INCH = 372.14285714285717 * 0.0393701 * 58/6000
 COUNTS_PER_MM = 6700 / 6000 
 
@@ -118,6 +130,14 @@ class Motor():
     def serial_input(self, data):
         self.line = int(data, 16) / COUNTS_PER_MM
 
+    def draw(self, screen, con_pos):
+        (x, y) = self.drawing_coords()
+        pygame.draw.line(screen, (0, 0, 255), con_pos, (self.drawing_coords()), 3)
+        if self.torque < 0.001: return
+        line_end_x = con_pos[0] + (x - con_pos[0]) * self.torque / 50
+        line_end_y = con_pos[1] + (y - con_pos[1]) * self.torque / 50
+        draw_arrow(screen, (255, 0, 0), con_pos, (line_end_x, line_end_y), 5)
+
 class Controller():
     ''' Represents the entire kinematics controller. '''
     def __init__(self, motors, ser):
@@ -132,21 +152,22 @@ class Controller():
     def update_serial(self):
         motor_index = {b'A': 0, b'B': 1, b'C': 2}
 
-        if not self.ser: return
-
-        d = {}
-        while self.ser.in_waiting > 0:
-            c = self.ser.read()
-            if c in motor_index:
-                data = self.ser.read(4)
-                motor_to_update = self.motors[motor_index[c]]
-                motor_to_update.serial_input(data)
-                d[c] = data
-        print(d)
+        if self.ser:
+            d = {}
+            while self.ser.in_waiting > 0:
+                c = self.ser.read()
+                if c in motor_index:
+                    data = self.ser.read(4)
+                    motor_to_update = self.motors[motor_index[c]]
+                    motor_to_update.serial_input(data)
+                    d[c] = data
+            print(d)
         
         msg = self.motors[0].serial_output() + self.motors[1].serial_output() + self.motors[2].serial_output() + b't'
-        self.ser.write(msg)
-        self.ser.flush()
+        print(msg)
+        if self.ser:
+            self.ser.write(msg)
+            self.ser.flush()
 
         self.position_set = False
 
@@ -194,14 +215,18 @@ class Controller():
         x = (r1*r1 - r2*r2 + d*d)/(2*d)
         # print(r1, r2, d)
         y = (r1*r1 - r3*r3 + i*i + j*j)/(2*j) - i*x/j
-        # print(x, r1, r3, i, j)
+
         z = -(r1*r1 - x*x - y*y)**0.5
+        # print(r1, r3, i, j, z)
         almost_position = p1 + x*e_x + y*e_y
         # print(r1, almost_position[0], almost_position[1])
 
 
         self.position_set = True
         self._position = p1 + x*e_x + y*e_y + z*e_z
+        if math.isnan(self._position[0]): 
+            self._position = np.array((0, 0, 0))
+            print("is nan")
         return self._position
 
     ''' force: () -> np.array[3] '''
@@ -224,7 +249,7 @@ class Controller():
             torques = np.linalg.solve(M, f)
             for i in range(len(self.motors)):
                 # self.motors[i].torque = max(0, torques[i])
-                self.motors[i].torque = torques[i]
+                self.motors[i].torque = max(0, torques[i])
         except np.linalg.linalg.LinAlgError as e:
             print("singular matrix")
             for m in self.motors: m.torque = 0
@@ -294,15 +319,32 @@ class Controller():
         z = max(0, z)
         pygame.draw.rect(screen, (0, 0, 0), (max(0, x-10), max(0, z-10), 20, 20), 0)
 
-        pygame.draw.aaline(screen, (0, 0, 0), (x, z), (self.motors[0].drawing_coords()))
-        pygame.draw.aaline(screen, (0, 0, 0), (x, z), (self.motors[1].drawing_coords()))
-        pygame.draw.aaline(screen, (0, 0, 0), (x, z), (self.motors[2].drawing_coords()))
+        for m in self.motors: m.draw(screen, (x, z))
+        # draw_motor_circles(screen, self.motors)
+
 
         (dx, dy, dz) = self.force()
-        pygame.draw.line(screen, (255, 0, 0), (x, z), (max(0, x + dx * 10), max(0, z - dz*10)), 5)
+        draw_arrow(screen, (0, 180, 0), (x, z), (max(0, x + dx * 10), max(0, z - dz*10)), 5)
 
 
 
+def draw_motor_circles(screen, ms):
+    surface1 = pygame.Surface((600, 600), flags=pygame.SRCALPHA)
+    surface2 = pygame.Surface((600, 600), flags=pygame.SRCALPHA)
+    surface3 = pygame.Surface((600, 600), flags=pygame.SRCALPHA)
+
+    pygame.draw.circle(surface1, pygame.Color(200, 100, 0, 50), ms[0].drawing_coords(), int(ms[0].line * CVT))
+    pygame.draw.circle(surface1, pygame.Color(0, 0, 0, 100), ms[0].drawing_coords(), int(ms[0].line * CVT), 2)
+
+    pygame.draw.circle(surface2, pygame.Color(100, 200, 100, 50), ms[1].drawing_coords(), int(ms[1].line * CVT))
+    pygame.draw.circle(surface2, pygame.Color(0, 0, 0, 100), ms[1].drawing_coords(), int(ms[1].line * CVT), 2)
+
+    pygame.draw.circle(surface3, pygame.Color(0, 0, 200, 50), ms[2].drawing_coords(), int(ms[2].line * CVT))
+    pygame.draw.circle(surface3, pygame.Color(0, 0, 0, 100), ms[2].drawing_coords(), int(ms[2].line * CVT), 2)
+
+    screen.blit(surface1, (0, 0))
+    screen.blit(surface2, (0, 0))
+    screen.blit(surface3, (0, 0))
 
 
 

@@ -1,0 +1,27 @@
+!_TAG_FILE_SORTED	2	/0=unsorted, 1=sorted, 2=foldcase/
+con	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^con = Controller([motor1, motor2, motor3], ser)$/;"	v	language:Python
+Controller	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^from motors.controller import Controller, Motor, convert_polys, polygon_intersect$/;"	i	language:Python
+convert2d	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^from motors.drawing import SCREEN_SIZE, convert2d, unconvert$/;"	i	language:Python
+convert_polys	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^from motors.controller import Controller, Motor, convert_polys, polygon_intersect$/;"	i	language:Python
+detect_polygons	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^from sensing.objectdetect import detect_polygons$/;"	i	language:Python
+end	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^def end():$/;"	f	language:Python
+lb	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^lb = LidarBuffer(ld)$/;"	v	language:Python
+ld	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^ld = Lidar("\/dev\/tty.SLAB_USBtoUART")$/;"	v	language:Python
+Lidar	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^from sensing.lidar_mock import Lidar$/;"	i	language:Python
+LidarBuffer	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^from sensing.lidar_buffer import LidarBuffer$/;"	i	language:Python
+lidar_to_points	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^from lidar_to_points import lidar_to_points$/;"	i	language:Python
+main	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^def main():$/;"	f	language:Python
+Motor	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^from motors.controller import Controller, Motor, convert_polys, polygon_intersect$/;"	i	language:Python
+motor1	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^motor1 = Motor(np.array((-3000, 0, 0)), 0)$/;"	v	language:Python
+motor2	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^motor2 = Motor(np.array((-3000, 5050, 0)), 0)$/;"	v	language:Python
+motor3	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^motor3 = Motor(np.array((3000, 0, 0)), 0)$/;"	v	language:Python
+np	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^import numpy as np$/;"	i	language:Python
+outline	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^outline = [(-3000, 0), (-2000, 1000), (-1000, 1500), (-500, 2000), (0, 1000), (1000, 3000), (2000, 2000), (2500, 200), (3000, 0)]$/;"	v	language:Python
+polygon_intersect	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^from motors.controller import Controller, Motor, convert_polys, polygon_intersect$/;"	i	language:Python
+pygame	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^import pygame$/;"	i	language:Python
+samples	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^samples = lb.samples[:]$/;"	v	language:Python
+SCREEN_SIZE	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^from motors.drawing import SCREEN_SIZE, convert2d, unconvert$/;"	i	language:Python
+ser	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^    ser = serial.Serial('\/dev\/tty.usbmodem00000001')$/;"	v	language:Python
+ser	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^ser = None$/;"	v	language:Python
+serial	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^import serial$/;"	i	language:Python
+unconvert	/Users/zacharysussman/Box Sync/CMU/16-467/self-driving-human/main_pygame.py	/^from motors.drawing import SCREEN_SIZE, convert2d, unconvert$/;"	i	language:Python

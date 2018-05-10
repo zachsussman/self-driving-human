@@ -1,7 +1,7 @@
 from motors.controller import Controller, Motor, convert_polys, polygon_intersect
 from motors.drawing import SCREEN_SIZE, convert2d, unconvert
 from sensing.objectdetect import detect_polygons
-from sensing.lidar_mock import Lidar
+from sensing.lidar import Lidar
 from sensing.lidar_buffer import LidarBuffer
 from lidar_to_points import lidar_to_points
 import numpy as np
@@ -18,10 +18,10 @@ except:
     pass
 
 
-outline = [(-3000, 0), (-2000, 1000), (-1000, 1500), (-500, 2000), (0, 1000), (1000, 3000), (2000, 2000), (2500, 200), (3000, 0)]
+outline = [(-3000, 100), (-2100, 100), (-2000, 1000), (-1000, 2000), (-500, 2000), (0, 2000), (1000, 3000), (2000, 3000), (2500, 200), (3000, 0)]
 
 motor1 = Motor(np.array((-3000, 0, 0)), 0)
-motor2 = Motor(np.array((-3000, 5050, 0)), 0)
+motor2 = Motor(np.array((-3000, 5050, 1000)), 0)
 motor3 = Motor(np.array((3000, 0, 0)), 0)
 con = Controller([motor1, motor2, motor3], ser)
 
@@ -54,9 +54,11 @@ def main():
 
         con.update_serial()
 
-        # mouse_pos = unconvert(pygame.mouse.get_pos())
-        # con.set_position(np.array((mouse_pos[0], 200, mouse_pos[1])))
+        mouse_pos = unconvert(pygame.mouse.get_pos())
+        con.set_position(np.array((mouse_pos[0], 1 , mouse_pos[1])))
         screen.fill((255, 255, 255))
+
+        # con.set_outline(outline)
 
         samples = lb.samples[:]
         # print(samples)
@@ -69,9 +71,10 @@ def main():
         # for poly in polygons:
         p = [convert2d(point) for point in outline]
             # color = (0, 128, 0) if polygon_intersect(p, mouse_pos) else (0, 0, 128)
-        if len(p) > 1: pygame.draw.aalines(screen, (0, 0, 128), False, p)
-        # pygame.draw.lines(screen, (0, 128, 0), False, [convert2d(p) for p in outline])
-        con.draw(screen)
+        # if len(p) > 1: pygame.draw.aalines(screen, (0, 0, 128), False, p)
+        # con.draw(screen)
+        pygame.draw.lines(screen, (0, 128, 0), False, [convert2d(p) for p in outline], 2)
+
         # print("frame")
 
         pygame.display.flip()
