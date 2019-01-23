@@ -138,7 +138,7 @@ class Motor():
         line_end_y = con_pos[1] + (y - con_pos[1]) * self.torque / 50
         draw_arrow(screen, (255, 0, 0), con_pos, (line_end_x, line_end_y), 5)
 
-class Handle():
+class Controller():
     ''' Represents the entire kinematics controller. '''
     def __init__(self, motors, ser):
         self.motors = motors
@@ -171,6 +171,15 @@ class Handle():
 
         self.position_set = False
 
+    ''' set_polygons: [(float, float)] -> void '''
+    def set_polygons(self, polygons):
+        ''' Sets the current polygons, invalidating the current kinematics. '''
+        self.polygons = polygons
+        self.valid_kinematics = False
+
+    def set_outline(self, outline):
+        self.outline = outline
+        self.valid_kinematics = False
 
     ''' set_position: np.array[3] -> void '''
     def set_position(self, position):
@@ -318,14 +327,6 @@ class Handle():
         draw_arrow(screen, (0, 180, 0), (x, z), (max(0, x + dx * 10), max(0, z - dz*10)), 5)
 
 
-def Controller():
-    def __init__(self, handle):
-        self.handle = handle
-        self.outline = outline
-
-    def set_outline(self, outline):
-        self.outline = outline
-        self.valid_kinematics = False
 
 
 def draw_motor_circles(screen, ms):

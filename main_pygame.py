@@ -1,4 +1,4 @@
-from motors.controller import Controller, Motor, convert_polys, polygon_intersect
+from motors.pid import Controller, Motor, convert_polys, polygon_intersect
 from motors.drawing import SCREEN_SIZE, convert2d, unconvert
 from sensing.objectdetect import detect_polygons
 from sensing.lidar_mock import Lidar
@@ -52,10 +52,10 @@ def main():
             if event.type == pygame.QUIT or event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 end()
 
-        con.update_serial()
+        # con.update_serial()
 
-        # mouse_pos = unconvert(pygame.mouse.get_pos())
-        # con.set_position(np.array((mouse_pos[0], 200, mouse_pos[1])))
+        mouse_pos = unconvert(pygame.mouse.get_pos())
+        con.set_position(np.array((mouse_pos[0], 200, mouse_pos[1])))
         screen.fill((255, 255, 255))
 
         samples = lb.samples[:]
