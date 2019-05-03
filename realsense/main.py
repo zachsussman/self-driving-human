@@ -103,7 +103,7 @@ def main():
                 min(pos[1] / 50.8 * WIDTH / RESCALE * ZOOM - 10,
                     HEIGHT / RESCALE * ZOOM - 1), 0))
 
-        z = max(int(pos[2]) * 100, 1)
+        z = max(int(pos[2]) * 200, 1)
 
         mouse_real_world = rs.rs2_deproject_pixel_to_point(
             depth_frame.profile.as_video_stream_profile().intrinsics,

@@ -14,7 +14,7 @@ MOTOR_LOCS = [M1_LOC, M2_LOC, M3_LOC]
 MIDDLE_LOC = sum(MOTOR_LOCS) / 3
 MIDDLE_LOC[2] = 1
 
-FORCE_TO_AMPS = 0.1
+FORCE_TO_AMPS = 0.002
 ENC_TO_CM = [
     # 0.003, 0.003, 0.003
     50.8 / 22123.9755859375,
@@ -126,9 +126,9 @@ class Motors():
             forces += [component]
             if component > 0:
                 motor.controller.current_setpoint = min(
-                    10 + component * FORCE_TO_AMPS, 35)
+                    8 + component * FORCE_TO_AMPS, 20)
             else:
-                motor.controller.current_setpoint = 10
+                motor.controller.current_setpoint = 8
         print(forces)
 
     def on_exit(self):
