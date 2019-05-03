@@ -9,14 +9,11 @@ import pygame
 import sys
 sys.path.append('/usr/local/lib')
 import pyrealsense2 as rs
-import numpy as np
 
 WIDTH = 848
 HEIGHT = 480
 RESCALE = 4
 ZOOM = 2
-
-print("let's start")
 
 
 def get_real_world_coord(depth_frame: rs.depth_frame, pos: (int, int)):
@@ -61,9 +58,15 @@ def compute_feedback_vector(depth_frame: rs.depth_frame, pos3d: (float, float,
 
 
 def main():
+    print("initializing camera")
     camera = RealSense()
     camera.start_stream()
 
+    print("initializing motors")
+    motor_controller = motors.Motors()
+    motor_controller.start()
+
+    print("initializing pygame")
     pygame.init()
     display = (WIDTH // RESCALE * ZOOM, HEIGHT // RESCALE * ZOOM)
     screen = pygame.display.set_mode(display, 0)
@@ -89,9 +92,18 @@ def main():
             np.asanyarray(depth_frame.get_data()).T.astype(float),
             np.ones((ZOOM, ZOOM)))
 
-        (mouse_x, mouse_y) = pygame.mouse.get_pos()
+        # (mouse_x, mouse_y) = pygame.mouse.get_pos()
+        pos = motor_controller.position()
+        mouse_x = int(
+            max(
+                min(pos[0] / 50.8 * WIDTH / RESCALE * ZOOM,
+                    WIDTH / RESCALE * ZOOM - 1), 0))
+        mouse_y = int(
+            max(
+                min(pos[1] / 50.8 * WIDTH / RESCALE * ZOOM - 10,
+                    HEIGHT / RESCALE * ZOOM - 1), 0))
 
-        print("Current z:", z, "target z:", final[mouse_x, mouse_y])
+        z = max(int(pos[2]) * 100, 1)
 
         mouse_real_world = rs.rs2_deproject_pixel_to_point(
             depth_frame.profile.as_video_stream_profile().intrinsics,
@@ -110,8 +122,11 @@ def main():
         if np.isnan(vec[0]):
             vec = np.array((0, 0, 0))
 
+        motor_controller.create_force(vec)
+
         screen.fill((255, 255, 255))
         screen.blit(depth_image, (0, 0))
+        pygame.draw.circle(screen, (0, 255, 0), (mouse_x, mouse_y), 5)
         pygame.draw.line(screen, (255, 0, 0), (mouse_x, mouse_y),
                          (mouse_x + int(vec[0]), mouse_y + int(vec[1])))
         pygame.display.flip()
