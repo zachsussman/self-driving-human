@@ -126,11 +126,14 @@ class Motors():
             forces += [component]
             if component > 0:
                 motor.controller.current_setpoint = min(
-                    10 + component * FORCE_TO_AMPS, 35)
+                    10 + component * FORCE_TO_AMPS, 20)
             else:
                 motor.controller.current_setpoint = 10
-        print(forces)
 
     def on_exit(self):
+        for motor in self.motors:
+            motor.controller.current_setpoint = 0
+
+    def shutdown(self):
         for motor in self.motors:
             motor.controller.current_setpoint = 0

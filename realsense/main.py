@@ -15,6 +15,9 @@ HEIGHT = 480
 RESCALE = 4
 ZOOM = 2
 
+import time
+from threading import Thread, Lock
+
 
 def get_real_world_coord(depth_frame: rs.depth_frame, pos: (int, int)):
     x, y = pos
@@ -57,14 +60,141 @@ def compute_feedback_vector(depth_frame: rs.depth_frame, pos3d: (float, float,
     return dist_beyond * compute_normal_vector(depth_frame, x, y)
 
 
+depth_frame_global = None
+depth_frame_lock = Lock()
+
+frame_info_global = {
+    "final": None,
+    "mouse_x": None,
+    "mouse_y": None,
+    "vec": None
+}
+frame_info_lock = Lock()
+
+
+class FrameThread(Thread):
+    def __init__(self, camera):
+        super().__init__()
+        self.camera = camera
+        self.count = 0
+
+    def run(self):
+        global depth_frame_global
+        while True:
+            time.sleep(0.03)
+            frame = self.camera.get_depth_frame()
+            if not frame:
+                continue
+
+            with depth_frame_lock:
+                depth_frame_global = frame
+
+            with frame_info_lock:
+                frame_info_global["final"] = np.kron(
+                    np.asanyarray(frame.get_data()).T.astype(float),
+                    np.ones((ZOOM, ZOOM)))
+
+
+class MotorThread(Thread):
+    def __init__(self, motor_controller):
+        super().__init__()
+        self.motor_controller = motor_controller
+        self.count = 0
+
+    def run(self):
+        global depth_frame_global
+        print("motor thread starting")
+        while True:
+            time.sleep(0.01)
+            with depth_frame_lock:
+                depth_frame = depth_frame_global
+                if depth_frame == None:
+                    print(repr(depth_frame))
+                    continue
+
+                print("here 3")
+
+                pos = self.motor_controller.position()
+                mouse_x = int(
+                    max(
+                        min(pos[0] / 50.8 * WIDTH / RESCALE * ZOOM,
+                            WIDTH / RESCALE * ZOOM - 1), 0))
+                mouse_y = int(
+                    max(
+                        min(pos[1] / 50.8 * WIDTH / RESCALE * ZOOM - 10,
+                            HEIGHT / RESCALE * ZOOM - 1), 0))
+
+                z = max(int(pos[2]) * 100, 1)
+
+                mouse_real_world = rs.rs2_deproject_pixel_to_point(
+                    depth_frame.profile.as_video_stream_profile().intrinsics,
+                    [mouse_x // 2, mouse_y // 2], z)
+
+                vec = compute_feedback_vector(depth_frame, mouse_real_world)
+
+            with frame_info_lock:
+                frame_info_global["mouse_x"] = mouse_x
+                frame_info_global["mouse_y"] = mouse_y
+                frame_info_global["vec"] = vec
+
+            self.motor_controller.create_force(vec)
+            print("motors set", self.count)
+            self.count += 1
+
+
+def mainloop(screen):
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT or event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            pygame.quit()
+            return False
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_q:
+                z += 100
+            elif event.key == pygame.K_w:
+                z -= 100
+
+        with frame_info_lock:
+            final = np.copy(frame_info_global["final"])
+            mouse_x = frame_info_global["mouse_x"]
+            mouse_y = frame_info_global["mouse_y"]
+            vec = np.copy(frame_info_global["vec"])
+
+        screen.fill((255, 255, 255))
+
+        if final != None:
+            to_display = final // 32
+            screenarray = np.zeros((WIDTH // RESCALE * ZOOM,
+                                    HEIGHT // RESCALE * ZOOM, 3))
+            screenarray[:, :, 0] = to_display
+            screenarray[:, :, 1] = to_display
+            screenarray[:, :, 2] = to_display
+            depth_image = pygame.surfarray.make_surface(screenarray)
+            screen.blit(depth_image, (0, 0))
+
+        if mouse_x != None and mouse_y != None:
+            pygame.draw.circle(screen, (0, 255, 0), (mouse_x, mouse_y), 5)
+            if vec != None:
+                pygame.draw.line(
+                    screen, (255, 0, 0), (mouse_x, mouse_y),
+                    (mouse_x + int(vec[0]), mouse_y + int(vec[1])))
+        pygame.display.flip()
+    return True
+
+
 def main():
     print("initializing camera")
     camera = RealSense()
     camera.start_stream()
 
+    frame_thread = FrameThread(camera)
+    frame_thread.start()
+
     print("initializing motors")
     motor_controller = motors.Motors()
     motor_controller.start()
+
+    motor_thread = MotorThread(motor_controller)
+    motor_thread.start()
 
     print("initializing pygame")
     pygame.init()
@@ -73,63 +203,7 @@ def main():
 
     z = 2000
 
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                pygame.quit()
-                return
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_q:
-                    z += 100
-                elif event.key == pygame.K_w:
-                    z -= 100
-
-        depth_frame = camera.get_depth_frame()
-        if not depth_frame:
-            continue
-
-        final = np.kron(
-            np.asanyarray(depth_frame.get_data()).T.astype(float),
-            np.ones((ZOOM, ZOOM)))
-
-        # (mouse_x, mouse_y) = pygame.mouse.get_pos()
-        pos = motor_controller.position()
-        mouse_x = int(
-            max(
-                min(pos[0] / 50.8 * WIDTH / RESCALE * ZOOM,
-                    WIDTH / RESCALE * ZOOM - 1), 0))
-        mouse_y = int(
-            max(
-                min(pos[1] / 50.8 * WIDTH / RESCALE * ZOOM - 10,
-                    HEIGHT / RESCALE * ZOOM - 1), 0))
-
-        z = max(int(pos[2]) * 100, 1)
-
-        mouse_real_world = rs.rs2_deproject_pixel_to_point(
-            depth_frame.profile.as_video_stream_profile().intrinsics,
-            [mouse_x // 2, mouse_y // 2], z)
-
-        to_display = final // 32
-        screenarray = np.zeros((WIDTH // RESCALE * ZOOM,
-                                HEIGHT // RESCALE * ZOOM, 3))
-        screenarray[:, :, 0] = to_display
-        screenarray[:, :, 1] = to_display
-        screenarray[:, :, 2] = to_display
-
-        depth_image = pygame.surfarray.make_surface(screenarray)
-
-        vec = compute_feedback_vector(depth_frame, mouse_real_world)
-        if np.isnan(vec[0]):
-            vec = np.array((0, 0, 0))
-
-        motor_controller.create_force(vec)
-
-        screen.fill((255, 255, 255))
-        screen.blit(depth_image, (0, 0))
-        pygame.draw.circle(screen, (0, 255, 0), (mouse_x, mouse_y), 5)
-        pygame.draw.line(screen, (255, 0, 0), (mouse_x, mouse_y),
-                         (mouse_x + int(vec[0]), mouse_y + int(vec[1])))
-        pygame.display.flip()
+    while mainloop(screen):
         pygame.time.wait(30)
 
 
