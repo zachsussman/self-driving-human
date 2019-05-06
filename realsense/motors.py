@@ -129,7 +129,7 @@ class Motors():
                     8 + component * FORCE_TO_AMPS, 27)
             else:
                 motor.controller.current_setpoint = 8
-        print(forces)
+        # print(forces)
 
     def on_exit(self):
         for motor in self.motors:
