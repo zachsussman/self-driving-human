@@ -3,8 +3,8 @@ sys.path.append('/usr/local/lib')
 import pyrealsense2 as rs
 import numpy as np
 
-WIDTH = 848
-HEIGHT = 480
+WIDTH = 1280
+HEIGHT = 720
 RESCALE = 4
 
 

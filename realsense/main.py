@@ -1,8 +1,10 @@
 from realsense import RealSense
 import motors
 
+import argparse
 import timeit
-
+import time
+from threading import Thread, Lock
 import numpy as np
 import pygame
 
@@ -10,13 +12,10 @@ import sys
 sys.path.append('/usr/local/lib')
 import pyrealsense2 as rs
 
-WIDTH = 848
-HEIGHT = 480
+WIDTH = 1280
+HEIGHT = 720
 RESCALE = 4
 ZOOM = 2
-
-import time
-from threading import Thread, Lock
 
 
 def get_real_world_coord(depth_frame: rs.depth_frame, pos: (int, int)):
@@ -43,6 +42,8 @@ def compute_normal_vector(depth_frame: rs.depth_frame, screenX: int,
     v2 = point_bl - point_ul
 
     cross = np.cross(v2, v1)
+    if np.linalg.norm(cross) == 0:
+        return np.zeros(3)
     return cross / np.linalg.norm(cross)
 
 
@@ -72,47 +73,91 @@ frame_info_global = {
 frame_info_lock = Lock()
 
 
+class ThreadCounter():
+    def __init__(self):
+        self.lock = Lock()
+        self.count = 0
+
+    def inc(self):
+        with self.lock:
+            self.count += 1
+
+    def get(self):
+        tmp = 0
+        with self.lock:
+            tmp = self.count
+        return tmp
+
+
 class FrameThread(Thread):
     def __init__(self, camera):
         super().__init__()
         self.camera = camera
-        self.count = 0
+        self.frame_counter = ThreadCounter()
+        self.done = False
 
     def run(self):
         global depth_frame_global
-        while True:
-            time.sleep(0.03)
+        while not self.done:
+            # time.sleep(0.03)
             frame = self.camera.get_depth_frame()
             if not frame:
                 continue
+
+            data = np.kron(
+                np.asanyarray(frame.get_data()).T.astype(float),
+                np.ones((ZOOM, ZOOM)))
 
             with depth_frame_lock:
                 depth_frame_global = frame
 
             with frame_info_lock:
-                frame_info_global["final"] = np.kron(
-                    np.asanyarray(frame.get_data()).T.astype(float),
-                    np.ones((ZOOM, ZOOM)))
+                frame_info_global["final"] = data
+
+            self.frame_counter.inc()
+
+
+class MonitorThread(Thread):
+    def __init__(self, threads):
+        super().__init__()
+        self.threads = threads
+        self.done = False
+
+    def run(self):
+        prev_counts = {
+            k: self.threads[k].frame_counter.get()
+            for k in self.threads
+        }
+        while not self.done:
+            time.sleep(1)
+            new_counts = {
+                k: self.threads[k].frame_counter.get()
+                for k in self.threads
+            }
+            print("FPS: ", end='')
+            for k in self.threads:
+                print(k, end=' ')
+                print(new_counts[k] - prev_counts[k], end=' ')
+            prev_counts = new_counts
+            print()
 
 
 class MotorThread(Thread):
     def __init__(self, motor_controller):
         super().__init__()
         self.motor_controller = motor_controller
-        self.count = 0
+        self.done = False
+        self.frame_counter = ThreadCounter()
 
     def run(self):
         global depth_frame_global
         print("motor thread starting")
-        while True:
-            time.sleep(0.01)
+        while not self.done:
+            time.sleep(0.001)
             with depth_frame_lock:
                 depth_frame = depth_frame_global
                 if depth_frame == None:
-                    print(repr(depth_frame))
                     continue
-
-                print("here 3")
 
                 pos = self.motor_controller.position()
                 mouse_x = int(
@@ -137,9 +182,8 @@ class MotorThread(Thread):
                 frame_info_global["mouse_y"] = mouse_y
                 frame_info_global["vec"] = vec
 
-            self.motor_controller.create_force(vec)
-            print("motors set", self.count)
-            self.count += 1
+            self.motor_controller.create_force(vec, pos)
+            self.frame_counter.inc()
 
 
 def mainloop(screen):
@@ -147,64 +191,77 @@ def mainloop(screen):
         if event.type == pygame.QUIT or event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             pygame.quit()
             return False
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_q:
-                z += 100
-            elif event.key == pygame.K_w:
-                z -= 100
 
-        with frame_info_lock:
-            final = np.copy(frame_info_global["final"])
-            mouse_x = frame_info_global["mouse_x"]
-            mouse_y = frame_info_global["mouse_y"]
-            vec = np.copy(frame_info_global["vec"])
+    frame_data = None
+    with frame_info_lock:
+        if frame_info_global["final"] is not None:
+            frame_data = np.copy(frame_info_global["final"])
+        mouse_x = frame_info_global["mouse_x"]
+        mouse_y = frame_info_global["mouse_y"]
+        vec = np.copy(frame_info_global["vec"])
 
-        screen.fill((255, 255, 255))
+    screen.fill((255, 255, 255))
+    if frame_data is not None:
+        to_display = frame_data // 32
+        screenarray = np.zeros((WIDTH // RESCALE * ZOOM,
+                                HEIGHT // RESCALE * ZOOM, 3))
+        screenarray[:, :, 0] = to_display
+        screenarray[:, :, 1] = to_display
+        screenarray[:, :, 2] = to_display
+        depth_image = pygame.surfarray.make_surface(screenarray)
+        screen.blit(depth_image, (0, 0))
 
-        if final != None:
-            to_display = final // 32
-            screenarray = np.zeros((WIDTH // RESCALE * ZOOM,
-                                    HEIGHT // RESCALE * ZOOM, 3))
-            screenarray[:, :, 0] = to_display
-            screenarray[:, :, 1] = to_display
-            screenarray[:, :, 2] = to_display
-            depth_image = pygame.surfarray.make_surface(screenarray)
-            screen.blit(depth_image, (0, 0))
+    if mouse_x is not None and mouse_y is not None:
+        pygame.draw.circle(screen, (0, 255, 0), (mouse_x, mouse_y), 5)
+        if vec is not None:
+            pygame.draw.line(screen, (255, 0, 0), (mouse_x, mouse_y),
+                             (mouse_x + int(vec[0]), mouse_y + int(vec[1])))
 
-        if mouse_x != None and mouse_y != None:
-            pygame.draw.circle(screen, (0, 255, 0), (mouse_x, mouse_y), 5)
-            if vec != None:
-                pygame.draw.line(
-                    screen, (255, 0, 0), (mouse_x, mouse_y),
-                    (mouse_x + int(vec[0]), mouse_y + int(vec[1])))
-        pygame.display.flip()
+    pygame.display.flip()
     return True
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-s", "--screen", help="add visual display", action="store_true")
+    args = parser.parse_args()
+
     print("initializing camera")
     camera = RealSense()
     camera.start_stream()
-
     frame_thread = FrameThread(camera)
-    frame_thread.start()
 
     print("initializing motors")
-    motor_controller = motors.Motors()
+    motor_controller = motors.MotorsFake()
     motor_controller.start()
-
+    motor_controller.set_position(np.array((10, 10, 10)))
     motor_thread = MotorThread(motor_controller)
+
+    monitor_thread = MonitorThread({
+        "Camera": frame_thread,
+        "Motors": motor_thread
+    })
     motor_thread.start()
+    frame_thread.start()
+    monitor_thread.start()
 
-    print("initializing pygame")
-    pygame.init()
-    display = (WIDTH // RESCALE * ZOOM, HEIGHT // RESCALE * ZOOM)
-    screen = pygame.display.set_mode(display, 0)
+    if args.screen:
+        print("initializing pygame")
+        pygame.init()
+        display = (WIDTH // RESCALE * ZOOM, HEIGHT // RESCALE * ZOOM)
+        screen = pygame.display.set_mode(display, 0)
 
-    z = 2000
-
-    while mainloop(screen):
-        pygame.time.wait(30)
+        while mainloop(screen):
+            time.sleep(0.03)
+    else:
+        time.sleep(100000)
+    frame_thread.done = True
+    motor_thread.done = True
+    monitor_thread.done = True
+    frame_thread.join()
+    motor_thread.join()
+    monitor_thread.join()
 
 
 if __name__ == "__main__":

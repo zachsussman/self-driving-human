@@ -14,7 +14,7 @@ MOTOR_LOCS = [M1_LOC, M2_LOC, M3_LOC]
 MIDDLE_LOC = sum(MOTOR_LOCS) / 3
 MIDDLE_LOC[2] = 1
 
-FORCE_TO_AMPS = 0.1
+FORCE_TO_AMPS = 0.008
 ENC_TO_CM = [
     # 0.003, 0.003, 0.003
     50.8 / 22123.9755859375,
@@ -24,10 +24,38 @@ ENC_TO_CM = [
 
 
 def unit(vec):
-    return vec / np.linalg.norm(vec)
+    n = np.linalg.norm(vec)
+    if n == 0:
+        return vec.astype(float)
+    return (vec / np.linalg.norm(vec)).astype(float)
 
 
-def trilaterate(encs):
+def trilaterate_analytically(encs):
+    (p1, p2, p3) = MOTOR_LOCS
+
+    e_x = (p2 - p1) / (np.linalg.norm(p2 - p1))
+    i = np.dot(e_x, p3 - p1)
+    e_y = (p3 - p1 - i * e_x) / (np.linalg.norm(p3 - p1 - i * e_x))
+    e_z = np.cross(e_x, e_y)
+    d = np.linalg.norm(p2 - p1)
+    j = np.dot(e_y, p3 - p1)
+
+    (r1, r2, r3) = encs
+
+    x = (r1 * r1 - r2 * r2 + d * d) / (2 * d)
+    y = (r1 * r1 - r3 * r3 + i * i + j * j) / (2 * j) - i * x / j
+    z = -(r1 * r1 - x * x - y * y)**0.5
+    almost_position = p1 + x * e_x + y * e_y
+    return p1 + x * e_x + y * e_y + z * e_z
+
+
+def trilaterate(encs, guess=MIDDLE_LOC):
+    p = trilaterate_analytically(encs)
+    if not np.isnan(p[0]):
+        return p
+
+    print("Position fail")
+
     def mse(x, locations, distances):
         ret = 0.0
         for l, d in zip(locations, distances):
@@ -39,11 +67,10 @@ def trilaterate(encs):
 
     return scipy.optimize.minimize(
         mse,
-        MIDDLE_LOC,
+        guess,
         args=([M1_LOC, M2_LOC, M3_LOC], encs),
-        method='Nelder-Mead',
         options={
-            'fatol': 1e-5,
+            'gtol': 1e-5,
             'maxiter': 1e+7
         }).x
 
@@ -94,46 +121,110 @@ def set_up_motors(motors):
         motor.controller.current_setpoint = 10
 
 
-class Motors():
-    def __init__(self):
-        self.drive0 = odrive.find_any(serial_number="20763389304B")
-        print("found drive0")
-        self.drive1 = odrive.find_any(serial_number="208737923548")
-        print("found drive1")
+class Motor():
+    def __init__(self, serial_number, axis_number, cm_constant):
+        self.drive = odrive.find_any(serial_number=serial_number)
+        if axis_number == 0:
+            self.motor = self.drive.axis0
+        else:
+            self.motor = self.drive.axis1
 
-        self.motors = [self.drive0.axis1, self.drive1.axis0, self.drive1.axis1]
-        self.checkers = [
-            EncoderChecker(motor, constant)
-            for (motor, constant) in zip(self.motors, ENC_TO_CM)
-        ]
-        self.encoder_checking = EncoderCheckingThread(self.checkers)
+        self.checker = EncoderChecker(self.motor, cm_constant)
+        self.encoder_checking = EncoderCheckingThread([self.checker])
 
     def start(self):
-        set_up_motors(self.motors)
-        self.encoder_checking.start()
+        self.motor.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+        self.motor.controller.current_setpoint = 10
+
+    def get_value(self):
+        return self.checker.get_value()
+
+    def set_force(self, force):
+        self.motor.controller.current_setpoint = force
+
+
+class MotorFake():
+    def __init__(self, _1, _2, _3):
+        self.length = 60
+
+    def start(self):
+        pass
+
+    def set_value(self, length):
+        self.length = length
+
+    def get_value(self):
+        return self.length + np.random.normal(0, 0.1)
+
+    def set_force(self, force):
+        pass
+
+
+class Motors():
+    def __init__(self):
+        # self.drive0 = odrive.find_any(serial_number="20763389304B")
+        # print("found drive0")
+        # self.drive1 = odrive.find_any(serial_number="208737923548")
+        # print("found drive1")
+
+        self._position = None
+
+    def start(self):
+        self.motors = [
+            Motor("20763389304B", 1, ENC_TO_CM[0]),
+            Motor("208737923548", 0, ENC_TO_CM[1]),
+            Motor("208737923548", 1, ENC_TO_CM[2])
+        ]
+        for motor in self.motors:
+            motor.start()
         # atexit.register(self.on_exit)
 
     def position(self):
-        return trilaterate([checker.get_value() for checker in self.checkers])
+        guess = MIDDLE_LOC
+        if self._position is not None:
+            guess = self._position
+        self._position = trilaterate(
+            [motor.get_value() for motor in self.motors], guess)
+        return self._position
 
-    def create_force(self, force):
-        pos = self.position()
-        forces = []
-        for (motor, motor_pos) in zip(self.motors, MOTOR_LOCS):
-            # print(self.motors)
-            tangent = unit(pos - motor_pos)
-            component = -np.dot(tangent, force)
-            forces += [component]
+    def create_force(self, force, pos):
+        positions = np.hstack(
+            [[unit(pos - motor_pos) for motor_pos in MOTOR_LOCS]])
+        components = np.linalg.lstsq(positions, force)[0]
+        for motor, component in zip(self.motors, components):
             if component > 0:
-                motor.controller.current_setpoint = min(
-                    10 + component * FORCE_TO_AMPS, 20)
+                motor.set_force(min(8 + component * FORCE_TO_AMPS, 27))
             else:
-                motor.controller.current_setpoint = 10
+                motor.set_force(8)
+        # for (motor, motor_pos) in zip(self.motors, MOTOR_LOCS):
+        #     tangent = unit(pos - motor_pos)
+        #     component = -np.dot(tangent, force)
+        #     forces += [component]
+        #     if component > 0:
+        #         motor.set_force(min(8 + component * FORCE_TO_AMPS, 27))
+        #     else:
+        #         motor.set_force(8)
 
     def on_exit(self):
         for motor in self.motors:
-            motor.controller.current_setpoint = 0
+            motor.set_force(0)
 
     def shutdown(self):
         for motor in self.motors:
-            motor.controller.current_setpoint = 0
+            motor.set_force(0)
+
+
+class MotorsFake(Motors):
+    def __init__(self):
+        super().__init__()
+
+    def start(self):
+        self.motors = [
+            MotorFake("20763389304B", 1, ENC_TO_CM[0]),
+            MotorFake("208737923548", 0, ENC_TO_CM[1]),
+            MotorFake("208737923548", 1, ENC_TO_CM[2])
+        ]
+
+    def set_position(self, position):
+        for (motor, motor_pos) in zip(self.motors, MOTOR_LOCS):
+            motor.set_value(np.linalg.norm(position - motor_pos))
