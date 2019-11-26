@@ -171,9 +171,9 @@ class Motors():
 
     def start(self):
         self.motors = [
-            Motor("20763389304B", 1, ENC_TO_CM[0]),
-            Motor("208737923548", 0, ENC_TO_CM[1]),
-            Motor("208737923548", 1, ENC_TO_CM[2])
+            Motor("208839864D4D", 1, ENC_TO_CM[0]),
+            Motor("208839864D4D", 0, ENC_TO_CM[1]),
+            Motor("20693597524B", 0, ENC_TO_CM[2])
         ]
         for motor in self.motors:
             motor.start()

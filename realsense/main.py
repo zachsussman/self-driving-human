@@ -233,7 +233,7 @@ def main():
     frame_thread = FrameThread(camera)
 
     print("initializing motors")
-    motor_controller = motors.MotorsFake()
+    motor_controller = motors.Motors()
     motor_controller.start()
     motor_controller.set_position(np.array((10, 10, 10)))
     motor_thread = MotorThread(motor_controller)
