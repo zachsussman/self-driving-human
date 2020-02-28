@@ -12,8 +12,8 @@ import sys
 sys.path.append('/usr/local/lib')
 import pyrealsense2 as rs
 
-WIDTH = 1280
-HEIGHT = 720
+WIDTH = 640
+HEIGHT = 480
 RESCALE = 4
 ZOOM = 2
 
@@ -28,6 +28,22 @@ def get_real_world_coord(depth_frame: rs.depth_frame, pos: (int, int)):
             depth_value))
 
 
+def normalize(v):
+    n = np.linalg.norm(v)
+    if n == 0:
+        return v
+    else:
+        return v / n
+
+
+def get_direction(depth_frame: rs.depth_frame, pixels):
+    point_origin = get_real_world_coord(depth_frame, pixels[0])
+    accum = np.zeros(3)
+    for p in pixels[1:]:
+        accum += normalize(get_real_world_coord(depth_frame, p) - point_origin)
+    return accum / (len(pixels) - 1)
+
+
 def compute_normal_vector(depth_frame: rs.depth_frame, screenX: int,
                           screenY: int):
     # assert screenX >= 0
@@ -35,11 +51,21 @@ def compute_normal_vector(depth_frame: rs.depth_frame, screenX: int,
     # assert screenY >= 0
     # assert screenY < depth_vals.shape[1] - 1
 
-    point_ul = get_real_world_coord(depth_frame, (screenX, screenY))
-    point_ur = get_real_world_coord(depth_frame, (screenX + 1, screenY))
-    point_bl = get_real_world_coord(depth_frame, (screenX, screenY + 1))
-    v1 = point_ur - point_ul
-    v2 = point_bl - point_ul
+    k = 5
+
+    minX = max(0, screenX - k)
+    maxX = min(WIDTH / RESCALE - 1, screenX + k)
+    minY = max(0, screenY - k)
+    maxY = min(HEIGHT / RESCALE - 1, screenY + k)
+
+    ur_to_ul = [(min(WIDTH / RESCALE - 1, minX + i), minY) for i in range(k)]
+    bl_to_ul = [(minX, min(HEIGHT / RESCALE - 1, minY + i)) for i in range(k)]
+
+    # v1 = get_direction([(minX, minY), (minX + 1, minY))
+    # point_ur = get_real_world_coord(depth_frame, (maxX, minY))
+    # point_bl = get_real_world_coord(depth_frame, (minX, maxY))
+    v1 = get_direction(depth_frame, ur_to_ul)
+    v2 = get_direction(depth_frame, bl_to_ul)
 
     cross = np.cross(v2, v1)
     if np.linalg.norm(cross) == 0:
@@ -162,14 +188,14 @@ class MotorThread(Thread):
                 pos = self.motor_controller.position()
                 mouse_x = int(
                     max(
-                        min(pos[0] / 50.8 * WIDTH / RESCALE * ZOOM,
-                            WIDTH / RESCALE * ZOOM - 1), 0))
+                        min((pos[0] / 50.8 + 0.25) * WIDTH / RESCALE * ZOOM /
+                            1.25, WIDTH / RESCALE * ZOOM - 1), 0))
                 mouse_y = int(
                     max(
-                        min(pos[1] / 50.8 * WIDTH / RESCALE * ZOOM - 10,
-                            HEIGHT / RESCALE * ZOOM - 1), 0))
+                        min((pos[1] / 50.8 + 0.08) * WIDTH / RESCALE * ZOOM /
+                            1.25 - 10, HEIGHT / RESCALE * ZOOM - 1), 0))
 
-                z = max(int(pos[2]) * 100, 1)
+                z = max(int(pos[2]) * 400, 1)
 
                 mouse_real_world = rs.rs2_deproject_pixel_to_point(
                     depth_frame.profile.as_video_stream_profile().intrinsics,
@@ -235,7 +261,7 @@ def main():
     print("initializing motors")
     motor_controller = motors.Motors()
     motor_controller.start()
-    motor_controller.set_position(np.array((10, 10, 10)))
+    # motor_controller.set_position(np.array((10, 10, 10)))
     motor_thread = MotorThread(motor_controller)
 
     monitor_thread = MonitorThread({

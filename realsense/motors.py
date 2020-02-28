@@ -17,9 +17,9 @@ MIDDLE_LOC[2] = 1
 FORCE_TO_AMPS = 0.008
 ENC_TO_CM = [
     # 0.003, 0.003, 0.003
-    50.8 / 22123.9755859375,
-    50.8 / 22682.947509765625,
-    50.8 / 23022.3447265625
+    1 / 1557.0,
+    1 / 1404.0,
+    1 / 1516.0
 ]
 
 
@@ -44,17 +44,18 @@ def trilaterate_analytically(encs):
 
     x = (r1 * r1 - r2 * r2 + d * d) / (2 * d)
     y = (r1 * r1 - r3 * r3 + i * i + j * j) / (2 * j) - i * x / j
-    z = -(r1 * r1 - x * x - y * y)**0.5
-    almost_position = p1 + x * e_x + y * e_y
-    return p1 + x * e_x + y * e_y + z * e_z
+    if r1 * r1 - x * x - y * y >= 0:
+        z = -(r1 * r1 - x * x - y * y)**0.5
+        almost_position = p1 + x * e_x + y * e_y
+        return p1 + x * e_x + y * e_y + z * e_z
+    else:
+        return np.array((np.nan, np.nan, np.nan))
 
 
 def trilaterate(encs, guess=MIDDLE_LOC):
     p = trilaterate_analytically(encs)
     if not np.isnan(p[0]):
         return p
-
-    print("Position fail")
 
     def mse(x, locations, distances):
         ret = 0.0
@@ -65,7 +66,7 @@ def trilaterate(encs, guess=MIDDLE_LOC):
         # print("distance to", x, "is", ret)
         return ret
 
-    return scipy.optimize.minimize(
+    p = scipy.optimize.minimize(
         mse,
         guess,
         args=([M1_LOC, M2_LOC, M3_LOC], encs),
@@ -73,6 +74,7 @@ def trilaterate(encs, guess=MIDDLE_LOC):
             'gtol': 1e-5,
             'maxiter': 1e+7
         }).x
+    return p
 
 
 class EncoderChecker():
@@ -91,6 +93,8 @@ class EncoderChecker():
         self.update_lock.release()
 
     def get_value(self):
+        if not self.current:
+            self.run()
         self.update_lock.acquire()
         ret_val = self.current - self.min
         self.update_lock.release()
@@ -121,9 +125,22 @@ def set_up_motors(motors):
         motor.controller.current_setpoint = 10
 
 
+drives = {}
+
+
+def get_drive(serial_number):
+    if serial_number not in drives:
+        drives[serial_number] = odrive.find_any(serial_number=serial_number)
+    return drives[serial_number]
+
+
 class Motor():
     def __init__(self, serial_number, axis_number, cm_constant):
-        self.drive = odrive.find_any(serial_number=serial_number)
+        self.serial_number = serial_number
+        self.axis_number = axis_number
+        print("here 1")
+        self.drive = get_drive(serial_number)
+        print("here 2")
         if axis_number == 0:
             self.motor = self.drive.axis0
         else:
@@ -135,12 +152,16 @@ class Motor():
     def start(self):
         self.motor.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
         self.motor.controller.current_setpoint = 10
+        self.encoder_checking.start()
 
     def get_value(self):
         return self.checker.get_value()
 
     def set_force(self, force):
         self.motor.controller.current_setpoint = force
+
+    def __str__(self):
+        return "Motor" + " " + str(self.axis_number) + " " + self.serial_number
 
 
 class MotorFake():
@@ -158,6 +179,10 @@ class MotorFake():
 
     def set_force(self, force):
         pass
+
+
+def adjust_for_calibration(point):
+    return point
 
 
 class Motors():
@@ -185,12 +210,12 @@ class Motors():
             guess = self._position
         self._position = trilaterate(
             [motor.get_value() for motor in self.motors], guess)
-        return self._position
+        return adjust_for_calibration(self._position)
 
     def create_force(self, force, pos):
         positions = np.hstack(
             [[unit(pos - motor_pos) for motor_pos in MOTOR_LOCS]])
-        components = np.linalg.lstsq(positions, force)[0]
+        components = -np.linalg.lstsq(positions, force)[0]
         for motor, component in zip(self.motors, components):
             if component > 0:
                 motor.set_force(min(8 + component * FORCE_TO_AMPS, 27))
