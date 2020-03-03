@@ -11,7 +11,7 @@ import serial
 
 ser = None
 try:
-    ser = serial.Serial('/dev/tty.usbmodem00000001')
+    ser = serial.Serial('/dev/ttyACM1')
     print("connected to serial")
 except:
     pass

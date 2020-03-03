@@ -67,11 +67,12 @@ def compute_normal_vector(depth_frame: rs.depth_frame, screenX: int,
     v1 = get_direction(depth_frame, ur_to_ul)
     v2 = get_direction(depth_frame, bl_to_ul)
 
-    cross[1] = 0
     cross = np.cross(v2, v1)
     if np.linalg.norm(cross) == 0:
         return np.zeros(3)
-    return cross / np.linalg.norm(cross)
+    cross = cross / np.linalg.norm(cross)
+    cross[1] = 0
+    return cross
 
 
 def compute_feedback_vector(depth_frame: rs.depth_frame, pos3d: (float, float,
